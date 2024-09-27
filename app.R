@@ -66,6 +66,9 @@ haz_labels <- list(
   "exposure"
 )
 
+`%ni%` <- Negate(`%in%`)
+
+
 {
 
 user_filters <- list()
@@ -244,10 +247,16 @@ ui <- navbarPage(qhrtet_ver,
     tabPanel(
       "Cheminformatics",
       fluidPage(
-        actionButton("haz_button", "Query"),
         fluidRow(
           column(
             width = 3,
+
+            selectInput('haz_cust_resp', label = 'Profile', choices = c('Full', 'Emergency Response', 'Site-Specific'), selected = 'Full'),
+            tags$hr(),
+
+            actionButton("haz_button", "Query"),
+            tags$hr(),
+
             uiOutput("haz_sort_list")
           ),
           column(
@@ -744,12 +753,13 @@ server <- function(input, output, session) {
     ### Hazard Comparison -------------------------------------------------------
   haz_df <- reactiveValues()
   haz_df$data <- NULL
-  haz_df$profile <- list(
-    'full',
-    'emergency',
-    'site'
-  )
-  haz_df$list <- list(
+  haz_df$cache <- NULL
+  haz_df$tp_end <- NULL
+  haz_df$tp_end_cache <- NULL
+  haz_df$tp_var <- NULL
+  haz_df$search <- NULL
+
+  full <- list(
     "dtxsid",
     "name",
     "acuteMammalianOral",
@@ -773,20 +783,40 @@ server <- function(input, output, session) {
     "bioaccumulation",
     "exposure"
   )
+  er <- list(
+    "dtxsid",
+    "name",
+    "acuteMammalianOral",
+    "acuteMammalianDermal",
+    "acuteMammalianInhalation",
+    "genotoxicity",
+    "neurotoxicitySingle",
+    "systemicToxicitySingle",
+    "eyeIrritation",
+    "skinIrritation",
+    "skinSensitization",
+    "acuteAquatic"
+  )
+  ss <- list(
+    "dtxsid",
+    "name",
+    "developmental",
+    "reproductive",
+    "endocrine",
+    "genotoxicity",
+    "carcinogenicity",
+    "neurotoxicityRepeat",
+    "systemicToxicityRepeat",
+    "chronicAquatic",
+    "persistence",
+    "bioaccumulation"
+  )
 
-  haz_df$cache <- NULL
-  haz_df$tp_end <- NULL
-  haz_df$tp_end_cache <- NULL
-  haz_df$tp_var <- NULL
-  haz_df$search <- NULL
+  haz_list_in <- reactiveVal(full)
+  haz_list_out <- reactiveVal(NULL)
 
 
-
-      #### CT upload ---------------------------------------------------------------
-
-
-        ##### Hazard query button -----------------------------------------------------
-
+  ##### Hazard query button -----------------------------------------------------
 
   observeEvent(input$haz_button, {
     req(user_data_list$compound)
@@ -797,6 +827,36 @@ server <- function(input, output, session) {
     haz_df$tp_end <- ComptoxR::tp_endpoint_coverage(haz_df$data$records, id = 'dtxsid', filter = 0.1)
     haz_df$tp_end_cache <- haz_df$tp_end
 
+  })
+
+  ##### Profile selection -------------------------------------------------------
+
+  observeEvent(input$haz_cust_resp, {
+
+  switch(input$haz_cust_resp,
+         'Full' = haz_list_in(full),
+         'Emergency Response' = haz_list_in(er),
+         'Site-Specific' = haz_list_in(ss)
+  )
+
+  })
+  observeEvent(input$haz_cust_resp, {
+
+    switch(input$haz_cust_resp,
+           'Full' = haz_list_out(NULL),
+           'Emergency Response' = haz_list_out(full[full %ni% er]),
+           'Site-Specific' = haz_list_out(full[full %ni% ss])
+    )
+
+  })
+
+
+  haz_table_filt <- reactive({
+    if(!identical(
+      colnames(haz_df$data$joined),
+      input$haz_sort_list)
+    ){haz_df$data$joined <- haz_df$cache}
+    haz_df$data$joined[input$haz_in]
   })
 
   output$hazard_table <- renderDT({
@@ -829,32 +889,32 @@ server <- function(input, output, session) {
       return(DT::datatable(default_tbl))
     }
 
-    DT::datatable(haz_df$data$joined
+    DT::datatable(haz_table_filt()
       # ,extensions = "Buttons",
       # options = list(
       #   dom = "Bfrtip",
       #   buttons = c("copy", "csv", "excel", "pdf", "print")
       # )
     ) %>%
-      formatStyle(names(haz_df$data$joined),
+      formatStyle(names(haz_table_filt()),
         textAlign = "center"
       ) %>%
-      formatStyle(names(haz_df$data$joined),
-        backgroundColor = styleEqual("VH", "red")
+      formatStyle(names(haz_table_filt()),
+        backgroundColor = styleEqual("VH", "#f5c6cb")
       ) %>%
-      formatStyle(names(haz_df$data$joined),
-        backgroundColor = styleEqual("H", "orange")
+      formatStyle(names(haz_table_filt()),
+        backgroundColor = styleEqual("H", "#ff8c0066")
       ) %>%
-      formatStyle(names(haz_df$data$joined),
-        backgroundColor = styleEqual("M", "yellow")
+      formatStyle(names(haz_table_filt()),
+        backgroundColor = styleEqual("M", "#ffeeba")
       ) %>%
-      formatStyle(names(haz_df$data$joined),
-        backgroundColor = styleEqual("L", "lightgreen")
+      formatStyle(names(haz_table_filt()),
+        backgroundColor = styleEqual("L", "#c3e6cb")
       ) %>%
-      formatStyle(names(haz_df$data$joined),
-        backgroundColor = styleEqual("I", "darkgrey")
+      formatStyle(names(haz_table_filt()),
+        backgroundColor = styleEqual("I", "#d6d8db")
       ) %>%
-      formatStyle(names(haz_df$data$joined),
+      formatStyle(names(haz_table_filt()),
         backgroundColor = styleEqual("ND", "SlateGray")
       )
   })
@@ -867,7 +927,7 @@ server <- function(input, output, session) {
       orientation = 'vertical',
       add_rank_list(
         text = "Filter OUT",
-        labels = NULL,
+        labels = haz_list_out(),
         input_id = 'haz_out',
         options = sortable_options(
           multiDrag = TRUE
@@ -875,29 +935,13 @@ server <- function(input, output, session) {
         ),
       add_rank_list(
         text = "Filter INCLUDE",
-        labels = haz_df$list,
+        labels = haz_list_in(),
         input_id = 'haz_in',
         options = sortable_options(
           multiDrag = TRUE
       )
     )
   )
-
-  })
-
-  observeEvent(input$haz_sort_list, {
-
-    if(!identical(
-      colnames(haz_df$data$joined),
-      input$haz_sort_list)
-      ){
-
-      haz_df$data$joined <- haz_df$cache
-
-      }
-
-      haz_df$data$joined <- haz_df$data$joined[input$haz_in]
-
 
   })
 
@@ -910,7 +954,8 @@ server <- function(input, output, session) {
                       target = 'cell',
                       disable = list(columns = c(1, 2)))
                     ) %>%
-        formatRound('score', 2) %>% formatPercentage('score', 0)
+        formatRound('score', 2) %>%
+        formatPercentage('score', 0)
   })
 
   observeEvent(input$haz_sort_list, {
