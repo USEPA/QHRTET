@@ -250,15 +250,14 @@ ui <- navbarPage(qhrtet_ver,
       fluidPage(
         fluidRow(
           column(
-            width = 3,
-            selectInput("haz_cust_resp",
-                        label = "Hazard profile",
-                        choices = c("Full", "Emergency Response", "Site-Specific"),
-                        selected = "Full"
-            )
+            width = 2,
+                 tags$h5(strong('Query compounds')),
+                 actionButton("haz_button",label = NULL, icon =tags$i(class = "fa-solid fa-cart-shopping"))
+                 ,align = "center"
+                 ,style = "margin-top: -5px;"
           ),
           column(
-            width = 3,
+            width = 2,
             tags$h5(strong('Import user endpoint data?')),
             switchInput("haz_user_cust_import",
                         size = "mini",
@@ -269,11 +268,13 @@ ui <- navbarPage(qhrtet_ver,
             align = "center"
             ,style = "margin-top: -5px;"
           ),
-          column(width = 3,
-                 tags$h5(strong('Query compounds')),
-                 actionButton("haz_button",label = NULL, icon =tags$i(class = "fa-solid fa-cart-shopping"))
-                 ,align = "center"
-                 ,style = "margin-top: -5px;"
+          column(
+            width = 3,
+            selectInput("haz_cust_resp",
+                        label = "Hazard profile",
+                        choices = c("Full", "Emergency Response", "Site-Specific"),
+                        selected = "Full"
+            )
           ),
           column(width = 3,
                  uiOutput("haz_endpoints_input")
@@ -480,7 +481,7 @@ ui <- navbarPage(qhrtet_ver,
     tabPanel(
       "Citations",
       fluidPage(
-        htmlOutput("grateful_report")
+        uiOutput('grateful_report')
       )
     ),
     tabPanel(
@@ -785,7 +786,7 @@ server <- function(input, output, session) {
     haz_df$data <- ComptoxR::chemi_hazard(user_data_list$compound)
     haz_df$data$joined <- left_join(haz_df$data$headers, haz_df$data$score, by = "dtxsid")
     haz_df$cache <- haz_df$data$joined
-    haz_df$tp_end <- ComptoxR::tp_endpoint_coverage(haz_df$data$records, id = "dtxsid", filter = 0.1)
+    haz_df$tp_end <- ComptoxR::tp_endpoint_coverage(haz_df$data$records, id = "dtxsid", filter = 0)
     haz_df$tp_end_cache <- haz_df$tp_end
   })
 
@@ -923,17 +924,18 @@ server <- function(input, output, session) {
   })
 
   endpoint_filt <- reactive({
-    req(haz_table_filt())
+    req(haz_df$data)
 
-    colnames(haz_table_filt()) %>%
-      str_subset(., pattern = "dtxsid|name", negate = T)
+    haz_table_filt() %>%
+      colnames(.) %>%
+      str_subset(., pattern = 'dtxsid|name', negate = T)
   })
 
   output$endpoint_coverage <- renderDT({
     req(haz_df$data)
 
     haz_df$tp_end %>%
-      select(endpoint_filt()) %>%
+      filter(., endpoint %in% endpoint_filt()) %>%
       DT::datatable(.,
         options = list(pageLength = 20),
         editable = list(
@@ -953,7 +955,8 @@ server <- function(input, output, session) {
   observeEvent(input$tp_score_button, {
     req(haz_df$data)
 
-    tp$bias <- haz_df$tp_end
+    tp$bias <- haz_df$tp_end %>%
+      filter(., endpoint %in% endpoint_filt())
 
     tp$data <- ComptoxR::tp_combined_score(
       table = haz_df$data$records,
