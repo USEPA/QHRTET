@@ -1,21 +1,21 @@
 # Packages ------------------------------------------------------------------
 {
-library(shiny)
-library(grateful)
-library(htmlwidgets)
-library(sortable)
-library(shinyWidgets)
-library(shinycssloaders)
-library(shinybusy)
-library(here)
-library(janitor)
-library(rio)
-library(tidyverse)
-library(DT)
-library(plotly)
-library(toxpiR)
+  library(shiny)
+  library(htmlwidgets)
+  library(sortable)
+  library(shinyWidgets)
+  library(shinycssloaders)
+  library(shinybusy)
+  library(here)
+  library(janitor)
+  library(rio)
+  library(tidyverse)
+  library(DT)
+  library(plotly)
+  library(toxpiR)
 
-library(ComptoxR)
+  library(ComptoxR)
+  library(grateful)
 }
 
 # Options ------------------------------------------------------------------
@@ -26,16 +26,14 @@ options(kableExtra.latex.load_packages = TRUE)
 options(dplyr.summarise.inform = FALSE)
 
 # Data ------------------------------------------------------------------
-sswqs <- list.files(pattern = '^sswqs_curated_*')
+sswqs <- list.files(pattern = "^sswqs_curated_*")
 
-if(length(sswqs == 1L)){
+if (length(sswqs == 1L)) {
   sswqs <- rio::import(file = sswqs)
 
-cli::cli_alert_info(paste0('SSWQS loaded: ', list.files(pattern = '^sswqs_curated_*')))
-}else{
-
-  cli::cli_abort('Issue with SSWQS files: more than one or zero detected!')
-
+  cli::cli_alert_info(paste0("SSWQS loaded: ", list.files(pattern = "^sswqs_curated_*")))
+} else {
+  cli::cli_abort("Issue with SSWQS files: more than one or zero detected!")
 }
 
 
@@ -70,41 +68,42 @@ haz_labels <- list(
 
 
 {
+  user_filters <- list()
 
-user_filters <- list()
+  user_filters$unitname <- unique(sswqs$unit_name)
 
-user_filters$unitname <- unique(sswqs$unit_name)
+  user_filters$range <- unique(sswqs$is_range)
 
-user_filters$range <- unique(sswqs$is_range)
+  user_filters$protection <- unique(sswqs$protection)
 
-user_filters$protection <- unique(sswqs$protection)
+  user_filters$sourcewater <- unique(sswqs$sourcewater)
 
-user_filters$sourcewater <- unique(sswqs$sourcewater)
+  user_filters$duration <- unique(sswqs$duration)
 
-user_filters$duration <- unique(sswqs$duration)
+  user_filters$enduse <- unique(sswqs$enduse)
 
-user_filters$enduse <-unique(sswqs$enduse)
+  user_filters$origin_category <-
+    unique(sswqs$origin_category)
 
-user_filters$origin_category <-
-  unique(sswqs$origin_category)
+  user_filters <- user_filters %>%
+    map(., sort)
 
-user_filters <- user_filters %>%
-  map(., sort)
+  user_filters$enduse <- user_filters$enduse[order(match(user_filters$enduse, c("Organism", "Water & Organism", "UNC")))]
 
-user_filters$enduse <- user_filters$enduse[order(match(user_filters$enduse,c("Organism", "Water & Organism", "UNC")))]
+  user_filters$origin_category <- user_filters$origin_category[order(match(user_filters$origin_category, c("Federal", "State", "Other")))]
 
-user_filters$origin_category <- user_filters$origin_category[order(match(user_filters$origin_category, c('Federal', 'State', 'Other')))]
-
-user_filters$data_category <- unique(sswqs$data_category)
+  user_filters$data_category <- unique(sswqs$data_category)
 }
 
-qhrtet_ver <- paste0("QHRTET ver ", packageVersion('ComptoxR'))
+cust_pal <- ComptoxR::cust_pal
+
+qhrtet_ver <- paste0("QHRTET ver ", packageVersion("ComptoxR"))
 
 # UI ------------------------------------------------------------------
 ui <- navbarPage(qhrtet_ver,
   id = "nav",
-
   header = shinybusy::add_busy_bar(color = "#0dc5c1"),
+  tags$script(src = "https://kit.fontawesome.com/c64da12c89.js"),
 
   ## 1. Landing ------------------------------------------------------------------
   tabPanel(
@@ -205,14 +204,16 @@ ui <- navbarPage(qhrtet_ver,
         accept = c(".xlsx", ".csv")
       ),
       fluidRow(
-        column(12,
-        actionButton("user_parse_button", "Parse data"),
-        actionButton("data_template_download", "Download template"),
-        actionButton("cleaned_user_data", "Download curated data"))
+        column(
+          12,
+          actionButton("user_parse_button", "Parse data"),
+          actionButton("data_template_download", "Download template"),
+          actionButton("cleaned_user_data", "Download curated data")
+        )
       ),
       tags$hr(),
       DTOutput("user_df") %>% withSpinner(color = "#0dc5c1")
-      #tags$hr(),
+      # tags$hr(),
       # verbatimTextOutput('user_df')
     ),
     ### User Benchmarks ------------------------------------------------------------------
@@ -250,25 +251,47 @@ ui <- navbarPage(qhrtet_ver,
         fluidRow(
           column(
             width = 3,
-
-            selectInput('haz_cust_resp', label = 'Profile', choices = c('Full', 'Emergency Response', 'Site-Specific'), selected = 'Full'),
-            tags$hr(),
-
-            actionButton("haz_button", "Query"),
-            tags$hr(),
-
-            uiOutput("haz_sort_list")
+            selectInput("haz_cust_resp",
+                        label = "Hazard profile",
+                        choices = c("Full", "Emergency Response", "Site-Specific"),
+                        selected = "Full"
+            )
           ),
           column(
-            width = 9,
-            DTOutput("hazard_table") %>% withSpinner(color = "#0dc5c1"),
-            tags$hr(),
-            tags$h4('Endpoint Data Coverage'),
-            tags$h5('Assign a bias weight for each endpoint of interest'),
-            actionButton('tp_score_button', 'Relative Risk Ranking'),
-            tags$hr(),
-            DTOutput("endpoint_coverage") %>% withSpinner(color = "#0dc5c1")
+            width = 3,
+            tags$h5(strong('Import user endpoint data?')),
+            switchInput("haz_user_cust_import",
+                        size = "mini",
+                        onLabel = "TRUE",
+                        offLabel = "FALSE"
+                        #,labelWidth = "120px"
+            ),
+            align = "center"
+            ,style = "margin-top: -5px;"
+          ),
+          column(width = 3,
+                 tags$h5(strong('Query compounds')),
+                 actionButton("haz_button",label = NULL, icon =tags$i(class = "fa-solid fa-cart-shopping"))
+                 ,align = "center"
+                 ,style = "margin-top: -5px;"
+          ),
+          column(width = 3,
+                 uiOutput("haz_endpoints_input")
           )
+        ),
+        tags$hr(),
+        fluidRow(
+          DTOutput("hazard_table") %>%
+            withSpinner(color = "#0dc5c1")
+        ),
+        tags$hr(),
+        fluidRow(
+          tags$h4("Endpoint Data Coverage"),
+          tags$h5("Assign a bias weight for each endpoint of interest"),
+          actionButton("tp_score_button", "Relative Risk Ranking"),
+          tags$hr(),
+          DTOutput("endpoint_coverage") %>%
+            withSpinner(color = "#0dc5c1")
         )
       )
     ),
@@ -282,36 +305,36 @@ ui <- navbarPage(qhrtet_ver,
           #### Table ranking ----------------------------------------------------
           column(
             width = 6,
-            DTOutput('tp_table') %>%
+            DTOutput("tp_table") %>%
               withSpinner(color = "#0dc5c1"),
           ),
 
           #### Ranked plot -------------------------------------------------------------
           column(
             width = 6,
-            plotlyOutput('tp_table_plot') %>%
+            plotlyOutput("tp_table_plot") %>%
               withSpinner(color = "#0dc5c1")
           )
-          ),
+        ),
         tags$hr(),
-
         fluidRow(
 
           #### Per Compound Details ----------------------------------------------------
-
           column(
             width = 6,
-            DTOutput('tp_single_table') %>% withSpinner(color = "#0dc5c1")
+            DTOutput("tp_single_table") %>%
+              withSpinner(color = "#0dc5c1")
           ),
 
           #### Per Compound Plot -------------------------------------------------------
           column(
             width = 6,
-            plotOutput('tp_single_plot') %>% withSpinner(color = "#0dc5c1")
+            plotOutput("tp_single_plot") %>%
+              withSpinner(color = "#0dc5c1")
           )
         )
-        )
       )
+    )
   ),
   ## 4. Exploration -------------------------------------------------------------
   navbarMenu(
@@ -322,91 +345,92 @@ ui <- navbarPage(qhrtet_ver,
       sidebarLayout(
 
         #### side panel --------------------------------------------------------------
-
-      sidebarPanel(
-        actionButton('filt_benchmark_data','Filter Benchmarks'),
-        checkboxInput('toggle_restrict_data',
-                      label = 'Restrict benchmarks to user data?',
-                      value = TRUE),
-
-        tags$hr(),
-
-        pickerInput(inputId = 'origin_category',
-                    label = 'Origin Category',
-                    choices = user_filters$origin_category,
-                    selected = user_filters$origin_category,
-                    multiple = T),
-
-        pickerInput(inputId = 'data_category',
-                    label = 'Data Category',
-                    choices = user_filters$data_category,
-                    selected = user_filters$data_category,
-                    multiple = T),
-
-        pickerInput(inputId = 'filt_unit',
-                    label = 'Unit Name',
-                    choices = user_filters$unitname,
-                    selected = user_filters$unitname,
-                    multiple = TRUE
-                   ),
-
-        pickerInput(inputId = 'filt_range',
-                    label = 'Ranged Values',
-                    choices = user_filters$range,
-                    selected = user_filters$range,
-                    multiple = TRUE
-                    ),
-
-        pickerInput(inputId = 'filt_protection',
-                    label = 'Level of Protection',
-                    choices = user_filters$protection,
-                    selected = user_filters$protection,
-                    multiple = TRUE
-                    ),
-
-        pickerInput(inputId = 'filt_sourcewater',
-                    label = 'Source water',
-                    choices = user_filters$sourcewater,
-                    selected = user_filters$sourcewater,
-                    multiple = TRUE
-                    ),
-
-        pickerInput(inputId = 'filt_duration',
-                    label = 'Duration',
-                    choices = user_filters$duration,
-                    selected = user_filters$duration,
-                    multiple = TRUE
-                    ),
-
-        pickerInput(inputId = 'filt_enduse',
-                    label = 'Enduse',
-                    choices = user_filters$enduse,
-                    selected = user_filters$enduse,
-                    multiple = TRUE
-                    )
+        sidebarPanel(
+          actionButton("filt_benchmark_data", "Filter Benchmarks"),
+          checkboxInput("toggle_restrict_data",
+            label = "Restrict benchmarks to user data?",
+            value = TRUE
+          ),
+          tags$hr(),
+          pickerInput(
+            inputId = "origin_category",
+            label = "Origin Category",
+            choices = user_filters$origin_category,
+            selected = user_filters$origin_category,
+            multiple = T
+          ),
+          pickerInput(
+            inputId = "data_category",
+            label = "Data Category",
+            choices = user_filters$data_category,
+            selected = user_filters$data_category,
+            multiple = T
+          ),
+          pickerInput(
+            inputId = "filt_unit",
+            label = "Unit Name",
+            choices = user_filters$unitname,
+            selected = user_filters$unitname,
+            multiple = TRUE
+          ),
+          pickerInput(
+            inputId = "filt_range",
+            label = "Ranged Values",
+            choices = user_filters$range,
+            selected = user_filters$range,
+            multiple = TRUE
+          ),
+          pickerInput(
+            inputId = "filt_protection",
+            label = "Level of Protection",
+            choices = user_filters$protection,
+            selected = user_filters$protection,
+            multiple = TRUE
+          ),
+          pickerInput(
+            inputId = "filt_sourcewater",
+            label = "Source water",
+            choices = user_filters$sourcewater,
+            selected = user_filters$sourcewater,
+            multiple = TRUE
+          ),
+          pickerInput(
+            inputId = "filt_duration",
+            label = "Duration",
+            choices = user_filters$duration,
+            selected = user_filters$duration,
+            multiple = TRUE
+          ),
+          pickerInput(
+            inputId = "filt_enduse",
+            label = "Enduse",
+            choices = user_filters$enduse,
+            selected = user_filters$enduse,
+            multiple = TRUE
+          )
         ),
         #### main panel --------------------------------------------------------------
 
-      mainPanel(
-        tags$head(
-          tags$style(HTML(".bucket-list-container {min-height: 350px;}"))
-        ),
-        fluidRow(
-          column(
-            width = 12,
-            uiOutput("benchmark_bucket")
-          )
-        ),
-        #tags$hr(),
-        fluidRow(
-          column(
-            width = 12,
-            DTOutput("benchmark_summary") %>% withSpinner(color = "#0dc5c1")
+        mainPanel(
+          tags$head(
+            tags$style(HTML(".bucket-list-container {min-height: 350px;}"))
+          ),
+          fluidRow(
+            column(
+              width = 12,
+              uiOutput("benchmark_bucket")
+            )
+          ),
+          # tags$hr(),
+          fluidRow(
+            column(
+              width = 12,
+              DTOutput("benchmark_summary") %>% withSpinner(color = "#0dc5c1")
+            )
           )
         )
       )
-    )
-  ),
+    ),
 
     ### Site Exploration --------------------------------------------------------
     # tabPanel('Site Exploration', fluidPage(
@@ -443,22 +467,22 @@ ui <- navbarPage(qhrtet_ver,
     # )),
 
     ### Site Summary ------------------------------------------------------------
-    tabPanel('Site Summary', fluidPage()),
+    tabPanel("Site Summary", fluidPage()),
 
     ### Site Prioritization ------------------------------------------------------
-    tabPanel('Site Priortization', fluidPage())
-
-),
+    tabPanel("Site Priortization", fluidPage())
+  ),
 
 
   ## 5. Citations -----------------------------------------------------------------
   navbarMenu(
     "Citations and Contact",
-    tabPanel("Citations",
-             fluidPage(
-               htmlOutput("grateful_report")
-             )
-            ),
+    tabPanel(
+      "Citations",
+      fluidPage(
+        htmlOutput("grateful_report")
+      )
+    ),
     tabPanel(
       "Contact",
       # h2("Hecho mit liebe"),
@@ -482,7 +506,7 @@ ui <- navbarPage(qhrtet_ver,
 server <- function(input, output, session) {
   ## Data --------------------------------------------------------------------
 
-    ### User Site Data ----------------------------------------------------------
+  ### User Site Data ----------------------------------------------------------
   {
     user_data_list <- reactiveValues()
 
@@ -497,20 +521,18 @@ server <- function(input, output, session) {
     user_data_list$site <- NULL
     user_data_list$group <- NULL
     user_data_list$date <- list(min = NA, max = NA)
-
   }
 
   observeEvent(input$user_data, {
-
     user_data_list$upload <- rio::import(input$user_data$datapath) %>%
       janitor::clean_names() %>%
-        filter(result_flag == 'DETECT'
-             & tic == 'NOT TIC'
-             & surrogate == 'NOT SURROGATE'
-             & !str_detect(site_name, 'DUP')
-      ) %>%
-      mutate(site_name = fct_reorder(site_name, dist),
-             date = as_date(date)
+      filter(result_flag == "DETECT" &
+        tic == "NOT TIC" &
+        surrogate == "NOT SURROGATE" &
+        !str_detect(site_name, "DUP")) %>%
+      mutate(
+        site_name = fct_reorder(site_name, dist),
+        date = as_date(date)
       )
 
     user_data_list$site <- unique(user_data_list$upload$site)
@@ -521,17 +543,15 @@ server <- function(input, output, session) {
       min = user_data_list$upload$date,
       max = user_data_list$upload$date
     )
-})
+  })
 
   ### Cleaning upload ---------------------------------------------------------
 
   observeEvent(input$user_parse_button, {
-
     req(user_data_list$upload)
 
-    if('preferred_name' %in% colnames(user_data_list$upload) & 'dtxsid' %in% colnames(user_data_list$upload)){
-
-      cli::cli_alert_info('Curated data detected!')
+    if ("preferred_name" %in% colnames(user_data_list$upload) & "dtxsid" %in% colnames(user_data_list$upload)) {
+      cli::cli_alert_info("Curated data detected!")
       cli::cli_text()
       user_data_list$upload_cleaned <- user_data_list$upload %>% rename(preferredName = preferred_name)
       user_data_list$compound <- unique(user_data_list$upload_cleaned$dtxsid)
@@ -539,8 +559,7 @@ server <- function(input, output, session) {
         filter(!is.na(cas_chk)) %>%
         distinct(analyte, cas_number, .keep_all = T) %>%
         select(analyte, cas_number, cas_chk, dtxsid, preferredName)
-
-    }else{
+    } else {
       user_data_list$cleaned <-
         user_data_list$upload %>%
         distinct(., analyte, cas_number, .keep_all = F)
@@ -551,15 +570,15 @@ server <- function(input, output, session) {
         arrange(cas_number, cas_chk, analyte) %>%
         filter(!is.na(cas_number) & !is.na(analyte))
 
-      #CAS
+      # CAS
       cas_search <- user_data_list$cleaned %>%
         filter(., cas_chk == TRUE) %>%
         select(cas_number) %>%
         ungroup()
 
       cas_raw <- ComptoxR::ct_search(
-        type = 'string',
-        search_param = 'equal',
+        type = "string",
+        search_param = "equal",
         query = cas_search$cas_number,
       )
 
@@ -567,15 +586,15 @@ server <- function(input, output, session) {
         distinct(., searchValue, .keep_all = T) %>%
         select(dtxsid, preferredName, searchValue, rank)
 
-      #Name
+      # Name
       name_search <- user_data_list$cleaned %>%
         filter(., cas_chk == TRUE) %>%
         select(analyte) %>%
         ungroup()
 
       name_raw <- ComptoxR::ct_search(
-        type = 'string',
-        search_param = 'equal',
+        type = "string",
+        search_param = "equal",
         query = name_search$analyte,
       )
 
@@ -583,24 +602,24 @@ server <- function(input, output, session) {
         distinct(., searchValue, .keep_all = T) %>%
         select(dtxsid, preferredName, searchValue, rank)
 
-      user_data_list$curated <- left_join(user_data_list$cleaned, cas_search, by = c('cas_number' = 'searchValue')) %>%
-        left_join(., name_search, by = c('analyte' = 'searchValue')) %>%
-        pivot_longer(., cols = c(dtxsid.x, dtxsid.y), values_to = 'dtxsid', names_to = 'dtx', values_drop_na = T) %>%
-        pivot_longer(., cols = c(preferredName.x, preferredName.y), values_to = 'preferredName', names_to = 'pref', values_drop_na = T) %>%
+      user_data_list$curated <- left_join(user_data_list$cleaned, cas_search, by = c("cas_number" = "searchValue")) %>%
+        left_join(., name_search, by = c("analyte" = "searchValue")) %>%
+        pivot_longer(., cols = c(dtxsid.x, dtxsid.y), values_to = "dtxsid", names_to = "dtx", values_drop_na = T) %>%
+        pivot_longer(., cols = c(preferredName.x, preferredName.y), values_to = "preferredName", names_to = "pref", values_drop_na = T) %>%
         select(-c(rank.x:dtx, pref)) %>%
         distinct(analyte, cas_number, .keep_all = T)
 
-      cli::cli_alert_success('Cleaned!\n')
+      cli::cli_alert_success("Cleaned!\n")
 
-      #Compounds
+      # Compounds
       user_data_list$compound <- unique(user_data_list$curated$dtxsid)
 
       print(user_data_list$compound)
       cli::cli_text()
 
       user_data_list$upload_cleaned <- user_data_list$upload %>%
-        left_join(., user_data_list$curated, by = (c('analyte', 'cas_number')))
-      }
+        left_join(., user_data_list$curated, by = (c("analyte", "cas_number")))
+    }
 
     # Hazard query from CCD ------------------------------------------------------------------
     # user_data_list$hazard <-
@@ -612,18 +631,16 @@ server <- function(input, output, session) {
     #
     # In-vitro query from CCD ------------------------------------------------------------------
     #
-
-
   })
 
-    output$user_df <- renderDT(user_data_list$curated)
+  output$user_df <- renderDT(user_data_list$curated)
 
-    observeEvent(input$cleaned_user_data, {
-      req(user_data_list$upload_cleaned)
-      rio::export(user_data_list$upload_cleaned, file = paste0('curated_user_data_', Sys.Date(),'.xlsx'))
-    })
+  observeEvent(input$cleaned_user_data, {
+    req(user_data_list$upload_cleaned)
+    rio::export(user_data_list$upload_cleaned, file = paste0("curated_user_data_", Sys.Date(), ".xlsx"))
+  })
 
-    ### User Benchmark ------------------------------------------------------------------
+  ### User Benchmark ------------------------------------------------------------------
   wqs_raw_upload <- reactive({
     req(input$wqs_upload)
     wqs_up <- rio::import(input$wqs_upload$datapath) %>%
@@ -637,22 +654,22 @@ server <- function(input, output, session) {
   )
 
 
-      #### Benchmark Template ------------------------------------------------------
+  #### Benchmark Template ------------------------------------------------------
 
-  observeEvent(input$wqs_download,{
-    #FIX THIS-----
+  observeEvent(input$wqs_download, {
+    # FIX THIS-----
     wqs_temp <- tribble(
-      ~REGION, ~ENTITY_NAME, ~ENTITY_ABBR, ~CAS_NO,	~STD_POLLUTANT_NAME,	~CRITERION_VALUE,	~UNIT_NAME,	~IS_RANGE,	~PROTECTION,	~SOURCEWATER,	~DURATION,	~ENDUSE,	~LOCAL,	~META,	~DATA_SOURCE,	~SHORT_CIT,	~CIT,
-      ) %>%
+      ~REGION, ~ENTITY_NAME, ~ENTITY_ABBR, ~CAS_NO, ~STD_POLLUTANT_NAME, ~CRITERION_VALUE, ~UNIT_NAME, ~IS_RANGE, ~PROTECTION, ~SOURCEWATER, ~DURATION, ~ENDUSE, ~LOCAL, ~META, ~DATA_SOURCE, ~SHORT_CIT, ~CIT,
+    ) %>%
       as.data.frame()
-    wqs_temp[1,] <- NA_character_
-    wqs_temp[,1:17] <- as.character( wqs_temp[,1:17])
+    wqs_temp[1, ] <- NA_character_
+    wqs_temp[, 1:17] <- as.character(wqs_temp[, 1:17])
 
-    rio::export(list('template' = wqs_temp), file = 'benchmark_template.xlsx')
+    rio::export(list("template" = wqs_temp), file = "benchmark_template.xlsx")
   })
 
 
-      #### User Benchmark List names ------------------------------------------------------------------
+  #### User Benchmark List names ------------------------------------------------------------------
 
   user_b_list <- reactive({
     req(input$wqs_raw_upload)
@@ -666,18 +683,19 @@ server <- function(input, output, session) {
     user_b_list()
   )
 
-    ### Benchmark list ------------------------------------------------------------------
+  ### Benchmark list ------------------------------------------------------------------
 
   benchmark_rv <- reactiveValues()
-    benchmark_rv$list <- list("State-Specific Water Quality Standards"
-                              ,'CCD Exposure and Screening Limits'
-                              ,'Cheminformatics Hazard endpoints'
-                              #,'ToxCast in-vitro endpoints'
-                              # TODO
-                              )
-    benchmark_rv$summary_table <- sswqs
+  benchmark_rv$list <- list(
+    "State-Specific Water Quality Standards",
+    "CCD Exposure and Screening Limits",
+    "Cheminformatics Hazard endpoints"
+    # ,'ToxCast in-vitro endpoints'
+    # TODO
+  )
+  benchmark_rv$summary_table <- sswqs
 
-  #creates list with new values
+  # creates list with new values
   observeEvent(input$wqs_upload, {
     if (!is.null(user_b_list())) {
       update <- isolate(user_b_list()$source)
@@ -685,12 +703,11 @@ server <- function(input, output, session) {
     }
   })
 
-  #builds super table
+  # builds super table
   observeEvent(input$wqs_upload, {
     if (!is.null(user_b_list())) {
-
       raw_user <-
-       raw_user_upload() %>%
+        raw_user_upload() %>%
         filter(!is.na(source))
 
       benchmark_rv$summary_table <- bind_rows(sswqs, raw_user)
@@ -715,33 +732,33 @@ server <- function(input, output, session) {
     )
   })
 
-      #### Benchmark Summary Table, Prioritized -------------------------------------
+  #### Benchmark Summary Table, Prioritized -------------------------------------
 
   observeEvent(input$filt_benchmark_data, {
-
     benchmark_rv$summary_table_filt <-
       benchmark_rv$summary_table %>%
-        select(-c(criterion_id,
-                  cit,
-                  origin_supercategory,
-                  origin_agency)) %>%
-        filter(
-            source %in% input$rank_list_2 &
-            origin_category %in% input$origin_category &
-            is_range %in% input$filt_range &
-            protection %in% input$filt_protection &
-            sourcewater %in% input$filt_sourcewater &
-            duration %in% input$filt_duration &
-            enduse %in% input$filt_enduse &
-            data_category %in% input$data_category &
-            unit_name %in% input$filt_unit
-            )
+      select(-c(
+        criterion_id,
+        cit,
+        origin_supercategory,
+        origin_agency
+      )) %>%
+      filter(
+        source %in% input$rank_list_2 &
+          origin_category %in% input$origin_category &
+          is_range %in% input$filt_range &
+          protection %in% input$filt_protection &
+          sourcewater %in% input$filt_sourcewater &
+          duration %in% input$filt_duration &
+          enduse %in% input$filt_enduse &
+          data_category %in% input$data_category &
+          unit_name %in% input$filt_unit
+      )
 
-    if(input$toggle_restrict_data == TRUE){
+    if (input$toggle_restrict_data == TRUE) {
       benchmark_rv$summary_table_filt <- benchmark_rv$summary_table_filt %>%
         filter(dtxsid %in% user_data_list$upload_cleaned$dtxsid)
     }
-
   })
 
   output$benchmark_summary <- renderDT({
@@ -750,7 +767,8 @@ server <- function(input, output, session) {
 
   ## Cheminformatics ------------------------------------------------------------------
 
-    ### Hazard Comparison -------------------------------------------------------
+  ### Hazard Comparison -------------------------------------------------------
+
   haz_df <- reactiveValues()
   haz_df$data <- NULL
   haz_df$cache <- NULL
@@ -758,63 +776,6 @@ server <- function(input, output, session) {
   haz_df$tp_end_cache <- NULL
   haz_df$tp_var <- NULL
   haz_df$search <- NULL
-
-  full <- list(
-    "dtxsid",
-    "name",
-    "acuteMammalianOral",
-    "acuteMammalianDermal",
-    "acuteMammalianInhalation",
-    "developmental",
-    "reproductive",
-    "endocrine",
-    "genotoxicity",
-    "carcinogenicity",
-    "neurotoxicitySingle",
-    "neurotoxicityRepeat",
-    "systemicToxicitySingle",
-    "systemicToxicityRepeat",
-    "eyeIrritation",
-    "skinIrritation",
-    "skinSensitization",
-    "acuteAquatic",
-    "chronicAquatic",
-    "persistence",
-    "bioaccumulation",
-    "exposure"
-  )
-  er <- list(
-    "dtxsid",
-    "name",
-    "acuteMammalianOral",
-    "acuteMammalianDermal",
-    "acuteMammalianInhalation",
-    "genotoxicity",
-    "neurotoxicitySingle",
-    "systemicToxicitySingle",
-    "eyeIrritation",
-    "skinIrritation",
-    "skinSensitization",
-    "acuteAquatic"
-  )
-  ss <- list(
-    "dtxsid",
-    "name",
-    "developmental",
-    "reproductive",
-    "endocrine",
-    "genotoxicity",
-    "carcinogenicity",
-    "neurotoxicityRepeat",
-    "systemicToxicityRepeat",
-    "chronicAquatic",
-    "persistence",
-    "bioaccumulation"
-  )
-
-  haz_list_in <- reactiveVal(full)
-  haz_list_out <- reactiveVal(NULL)
-
 
   ##### Hazard query button -----------------------------------------------------
 
@@ -824,44 +785,85 @@ server <- function(input, output, session) {
     haz_df$data <- ComptoxR::chemi_hazard(user_data_list$compound)
     haz_df$data$joined <- left_join(haz_df$data$headers, haz_df$data$score, by = "dtxsid")
     haz_df$cache <- haz_df$data$joined
-    haz_df$tp_end <- ComptoxR::tp_endpoint_coverage(haz_df$data$records, id = 'dtxsid', filter = 0.1)
+    haz_df$tp_end <- ComptoxR::tp_endpoint_coverage(haz_df$data$records, id = "dtxsid", filter = 0.1)
     haz_df$tp_end_cache <- haz_df$tp_end
-
   })
 
   ##### Profile selection -------------------------------------------------------
 
-  observeEvent(input$haz_cust_resp, {
-
-  switch(input$haz_cust_resp,
-         'Full' = haz_list_in(full),
-         'Emergency Response' = haz_list_in(er),
-         'Site-Specific' = haz_list_in(ss)
+  endpoints_list <- list(
+    'Full' = list(
+      "acuteMammalianOral",
+      "acuteMammalianDermal",
+      "acuteMammalianInhalation",
+      "developmental",
+      "reproductive",
+      "endocrine",
+      "genotoxicity",
+      "carcinogenicity",
+      "neurotoxicitySingle",
+      "neurotoxicityRepeat",
+      "systemicToxicitySingle",
+      "systemicToxicityRepeat",
+      "eyeIrritation",
+      "skinIrritation",
+      "skinSensitization",
+      "acuteAquatic",
+      "chronicAquatic",
+      "persistence",
+      "bioaccumulation",
+      "exposure"
+    ),
+    "Emergency Response" = list(
+      "acuteMammalianOral",
+      "acuteMammalianDermal",
+      "acuteMammalianInhalation",
+      "genotoxicity",
+      "neurotoxicitySingle",
+      "systemicToxicitySingle",
+      "eyeIrritation",
+      "skinIrritation",
+      "skinSensitization",
+      "acuteAquatic"
+    ),
+    "Site-Specific" = list(
+      "developmental",
+      "reproductive",
+      "endocrine",
+      "genotoxicity",
+      "carcinogenicity",
+      "neurotoxicityRepeat",
+      "systemicToxicityRepeat",
+      "chronicAquatic",
+      "persistence",
+      "bioaccumulation"
+    )
   )
 
+
+  output$haz_endpoints_input <- renderUI({
+    pickerInput('haz_sort_list',
+                label = 'Endpoints',
+                choices = endpoints_list[[input$haz_cust_resp]],
+                selected = endpoints_list[[input$haz_cust_resp]],
+                multiple = T)
   })
-  observeEvent(input$haz_cust_resp, {
-
-    switch(input$haz_cust_resp,
-           'Full' = haz_list_out(NULL),
-           'Emergency Response' = haz_list_out(full[full %ni% er]),
-           'Site-Specific' = haz_list_out(full[full %ni% ss])
-    )
-
-  })
-
 
   haz_table_filt <- reactive({
-    if(!identical(
+    if (!identical(
       colnames(haz_df$data$joined),
       input$haz_sort_list)
-    ){haz_df$data$joined <- haz_df$cache}
-    haz_df$data$joined[input$haz_in]
+    ) {
+      haz_df$data$joined <- haz_df$cache
+    }
+
+    filter_list <- c('dtxsid', 'name', input$haz_sort_list)
+
+    haz_df$data$joined[filter_list]
   })
 
   output$hazard_table <- renderDT({
-
-    if(is.null(haz_df$data)){
+    if (is.null(haz_df$data)) {
       default_tbl <- tribble(
         ~dtxsid,
         ~name,
@@ -889,7 +891,8 @@ server <- function(input, output, session) {
       return(DT::datatable(default_tbl))
     }
 
-    DT::datatable(haz_table_filt()
+    DT::datatable(
+      haz_table_filt()
       # ,extensions = "Buttons",
       # options = list(
       #   dom = "Bfrtip",
@@ -919,65 +922,30 @@ server <- function(input, output, session) {
       )
   })
 
-  output$haz_sort_list <- renderUI({
+  endpoint_filt <- reactive({
+    req(haz_table_filt())
 
-    bucket_list(
-      header = 'Endpoint filtering',
-      group_name = 'haz_sort_list',
-      orientation = 'vertical',
-      add_rank_list(
-        text = "Filter OUT",
-        labels = haz_list_out(),
-        input_id = 'haz_out',
-        options = sortable_options(
-          multiDrag = TRUE
-        )
-        ),
-      add_rank_list(
-        text = "Filter INCLUDE",
-        labels = haz_list_in(),
-        input_id = 'haz_in',
-        options = sortable_options(
-          multiDrag = TRUE
-      )
-    )
-  )
-
+    colnames(haz_table_filt()) %>%
+      str_subset(., pattern = "dtxsid|name", negate = T)
   })
 
   output$endpoint_coverage <- renderDT({
-      req(haz_df$data)
+    req(haz_df$data)
 
-      DT::datatable(haz_df$tp_end
-                    ,options = list(pageLength = 20)
-                    ,editable = list(
-                      target = 'cell',
-                      disable = list(columns = c(1, 2)))
-                    ) %>%
-        formatRound('score', 2) %>%
-        formatPercentage('score', 0)
+    haz_df$tp_end %>%
+      select(endpoint_filt()) %>%
+      DT::datatable(.,
+        options = list(pageLength = 20),
+        editable = list(
+          target = "cell",
+          disable = list(columns = c(1, 2))
+        )
+      ) %>%
+      formatRound("score", 2) %>%
+      formatPercentage("score", 0)
   })
 
-  observeEvent(input$haz_sort_list, {
-
-    endpoint_filt <- input$haz_in %>%
-      #as.character() %>%
-      str_subset(., pattern = 'dtxsid|name', negate = T)
-
-    if(!identical(endpoint_filt, haz_df$tp_end$endpoint)){
-      haz_df$tp_end <- haz_df$tp_end_cache
-
-    }
-
-    if(!is.null(haz_df$tp_end)){
-
-    haz_df$tp_end <- haz_df$tp_end[haz_df$tp_end$endpoint %in% endpoint_filt, ]
-    }
-
-  })
-
-
-    ### Relative Risk Ranking ---------------------------------------------------
+  ### Relative Risk Ranking ---------------------------------------------------
   tp <- reactiveValues()
   tp$data <- NULL
   tp$bias <- NULL
@@ -990,66 +958,63 @@ server <- function(input, output, session) {
     tp$data <- ComptoxR::tp_combined_score(
       table = haz_df$data$records,
       bias = tp$bias
-      )
+    )
+  })
 
-    })
+  #### TP table ----------------------------------------------------------------
 
-      #### TP table ----------------------------------------------------------------
+  output$tp_table <- renderDT({
+    req(tp$data)
 
-   output$tp_table <- renderDT({
-     req(tp$data)
-
-     tp$data$tp_scores %>%
-       left_join(., haz_df$data$headers, by = 'dtxsid') %>%
-       select(name, score) %>%
-       arrange(desc(score)) %>%
-       DT::datatable(.)
-
-   })
+    tp$data$tp_scores %>%
+      left_join(., haz_df$data$headers, by = "dtxsid") %>%
+      select(name, score) %>%
+      arrange(desc(score)) %>%
+      DT::datatable(.)
+  })
 
 
-      #### TP plot -----------------------------------------------------------------
+  #### TP plot -----------------------------------------------------------------
 
-   output$tp_table_plot <- renderPlotly({
-     req(tp$data)
+  output$tp_table_plot <- renderPlotly({
+    req(tp$data)
 
-     s <- input$tp_table_rows_selected
+    s <- input$tp_table_rows_selected
 
     df_dat <- tp$data$tp_scores %>%
-       left_join(., haz_df$data$headers, by = 'dtxsid') %>%
-       left_join(., tp$data$variable_coverage, by = 'dtxsid') %>%
-        arrange(desc(score)) %>%
-       #select(name, score, data_coverage) %>%
-       mutate(dtxsid = forcats::fct_reorder(dtxsid, score))
+      left_join(., haz_df$data$headers, by = "dtxsid") %>%
+      left_join(., tp$data$variable_coverage, by = "dtxsid") %>%
+      arrange(desc(score)) %>%
+      # select(name, score, data_coverage) %>%
+      mutate(dtxsid = forcats::fct_reorder(dtxsid, score))
 
-     p1 <- ggplot(df_dat) +
-         aes(x = score, y = dtxsid, colour = data_coverage, text = name) +
-         geom_point(shape = "circle", size = 3.45, alpha = 0.5) +
-         scale_color_viridis_c(option = "viridis", direction = 1) +
-         labs(
-           x = "Score",
-           y = "Compound",
-           title = "Relative Risk Ranking",
-           caption = "Color indicates data coverage on [0-1] scale",
-           color = "Coverage Score"
-         ) +
-         theme_classic() +
-         theme(
-           axis.title.y = element_text(size = 14L),
-           axis.title.x = element_text(size = 14L)
-         )
+    p1 <- ggplot(df_dat) +
+      aes(x = score, y = dtxsid, colour = data_coverage, text = name) +
+      geom_point(shape = "circle", size = 3.45, alpha = 0.5) +
+      scale_color_viridis_c(option = "viridis", direction = 1) +
+      labs(
+        x = "Score",
+        y = "Compound",
+        title = "Relative Risk Ranking",
+        caption = "Color indicates data coverage on [0-1] scale",
+        color = "Coverage Score"
+      ) +
+      theme_classic() +
+      theme(
+        axis.title.y = element_text(size = 14L),
+        axis.title.x = element_text(size = 14L)
+      )
 
-     if(length(s)){
-       p1 <- p1 +
-         geom_point(data = df_dat[s, , drop = FALSE], shape = '23', size = 4, color = 'black')
-     }
+    if (length(s)) {
+      p1 <- p1 +
+        geom_point(data = df_dat[s, , drop = FALSE], shape = "23", size = 4, color = "black")
+    }
 
-     ggplotly(p1, height = 500)
+    ggplotly(p1, height = 500)
+  })
 
-   })
 
-
-      #### Compound Details --------------------------------------------------------
+  #### Compound Details --------------------------------------------------------
 
   output$tp_single_table <- renderDT({
     req(tp$data)
@@ -1057,21 +1022,20 @@ server <- function(input, output, session) {
     s <- input$tp_table_rows_selected
 
     df_data <- tp$data$tp_scores %>%
-      left_join(., haz_df$data$headers, by = 'dtxsid') %>%
-      left_join(., tp$data$variable_coverage, by = 'dtxsid') %>%
+      left_join(., haz_df$data$headers, by = "dtxsid") %>%
+      left_join(., tp$data$variable_coverage, by = "dtxsid") %>%
       arrange(desc(score)) %>%
       mutate(name = forcats::fct_reorder(name, score)) %>%
       select(!c(score, data_coverage, dtxsid))
 
     df_data[s, , drop = FALSE] %>%
-      #rename(compound = name) %>%
-      pivot_longer(cols = !c(name), names_to = 'compound', values_to = 'endpoint') %>%
-      pivot_wider(id_cols = 'compound', names_from = 'name', values_from = 'endpoint') %>%
+      # rename(compound = name) %>%
+      pivot_longer(cols = !c(name), names_to = "compound", values_to = "endpoint") %>%
+      pivot_wider(id_cols = "compound", names_from = "name", values_from = "endpoint") %>%
       rename(Endpoint = compound)
-
   })
 
-      #### Compound Plot -----------------------------------------------------------
+  #### Compound Plot -----------------------------------------------------------
 
   output$tp_single_plot <- renderPlot({
     req(tp$data)
@@ -1079,30 +1043,31 @@ server <- function(input, output, session) {
     s <- input$tp_table_rows_selected
 
     df_data <- tp$data$tp_scores %>%
-      left_join(., haz_df$data$headers, by = 'dtxsid') %>%
-      left_join(., tp$data$variable_coverage, by = 'dtxsid') %>%
+      left_join(., haz_df$data$headers, by = "dtxsid") %>%
+      left_join(., tp$data$variable_coverage, by = "dtxsid") %>%
       arrange(desc(score)) %>%
       mutate(name = forcats::fct_reorder(name, score)) %>%
       select(!c(score, data_coverage, dtxsid))
 
     df_data <- df_data[s, , drop = FALSE] %>%
       rename(compound = name) %>%
-      pivot_longer(., cols = !c(compound), values_to = 'score') %>%
+      pivot_longer(., cols = !c(compound), values_to = "score") %>%
       ggplot(.) +
-          aes(x = name, y = score, fill = name) +
-          geom_bar(stat="identity") +
-          scale_fill_viridis_d(option = "viridis", direction = 1) +
-          coord_polar() +
-          theme_void() +
-          xlab(NULL) +
-          labs(
-            title = 'Per compound breakdown',
-            y = 'Score',
-            fill = 'Endpoint')
+      aes(x = name, y = score, fill = name) +
+      geom_bar(stat = "identity") +
+      scale_fill_discrete(type = cust_pal) +
+      coord_polar() +
+      theme_void() +
+      xlab(NULL) +
+      labs(
+        title = "Per compound breakdown",
+        y = "Score",
+        fill = "Endpoint"
+      )
 
-    if(length(s)){
+    if (length(s)) {
       df_data + facet_wrap(vars(compound), ncol = 3)
-    }else{
+    } else {
       df_data
     }
   })
@@ -1111,12 +1076,11 @@ server <- function(input, output, session) {
   ## Citations ---------------------------------------------------------------
 
   output$grateful_report <- renderUI({
-
     # tags$iframe(
     #   src = here('grateful-report.html'),
     #   seamless = TRUE
     # )
-    includeHTML(here('grateful-report.html'))
+    includeHTML(here("grateful-report.html"))
   })
 
   # Server End ------------------------------------------------------------------
