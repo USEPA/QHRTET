@@ -95,7 +95,8 @@ haz_labels <- list(
   user_filters$data_category <- unique(sswqs$data_category)
 }
 
-cust_pal <- ComptoxR::cust_pal
+cust_pal <- ComptoxR::cust_pal %>% unlist()
+cust_pal_trans <- paste0(cust_pal, '80')
 
 qhrtet_ver <- paste0("QHRTET ver ", packageVersion("ComptoxR"))
 
@@ -190,6 +191,12 @@ ui <- navbarPage(qhrtet_ver,
   ## 2. Upload ------------------------------------------------------------------
   navbarMenu(
     "User Upload",
+
+    ### API tokens --------------------------------------------------------------
+    tabPanel('API tokens',
+             fluidRow(actionButton('api_input_button', 'Submit')),
+             fluidRow(textInput('api_input', label = 'CCTE API token:', value = ""))
+    ),
     ### User Data --------------------------------------------------------------------
     tabPanel(
       "Data Upload",
@@ -507,6 +514,16 @@ ui <- navbarPage(qhrtet_ver,
 server <- function(input, output, session) {
   ## Data --------------------------------------------------------------------
 
+
+  ### API tokens---------------------------------------------------------------------
+
+  api_token <- reactive({NULL})
+
+  observeEvent(input$api_input_button, {
+    api_token() <- input$api_input
+    ct_api_key(api_token())
+  })
+
   ### User Site Data ----------------------------------------------------------
   {
     user_data_list <- reactiveValues()
@@ -658,7 +675,7 @@ server <- function(input, output, session) {
   #### Benchmark Template ------------------------------------------------------
 
   observeEvent(input$wqs_download, {
-    # FIX THIS-----
+    ###### FIX THIS-----
     wqs_temp <- tribble(
       ~REGION, ~ENTITY_NAME, ~ENTITY_ABBR, ~CAS_NO, ~STD_POLLUTANT_NAME, ~CRITERION_VALUE, ~UNIT_NAME, ~IS_RANGE, ~PROTECTION, ~SOURCEWATER, ~DURATION, ~ENDUSE, ~LOCAL, ~META, ~DATA_SOURCE, ~SHORT_CIT, ~CIT,
     ) %>%
@@ -1033,9 +1050,29 @@ server <- function(input, output, session) {
 
     df_data[s, , drop = FALSE] %>%
       # rename(compound = name) %>%
-      pivot_longer(cols = !c(name), names_to = "compound", values_to = "endpoint") %>%
-      pivot_wider(id_cols = "compound", names_from = "name", values_from = "endpoint") %>%
-      rename(Endpoint = compound)
+      pivot_longer(cols = !c(name),
+                   names_to = "compound",
+                   values_to = "endpoint") %>%
+      pivot_wider(id_cols = "compound",
+                  names_from = "name",
+                  values_from = "endpoint") %>%
+      rename(Endpoint = compound) %>%
+      DT::datatable(.,
+                    class = list(stripe = FALSE),
+                    options = list(columnDefs = list(list(
+                      targets = 0, # Target the first column (0-indexed)
+                      render = JS(
+                        sprintf(
+                          "function(data, type, row, meta) {
+                  var colors = %s;
+                  var colorIndex = meta.row %% colors.length;
+                  return '<div style=\"background-color: ' + colors[colorIndex] + '; width: 100%%; height: 100%%; display: flex; align-items: center; justify-content: center;\">' + data + '</div>';
+                }",
+                          jsonlite::toJSON(cust_pal_trans)
+                        )
+                      )
+                    )))) %>%
+      formatStyle(names(.), textAlign = "center")
   })
 
   #### Compound Plot -----------------------------------------------------------
